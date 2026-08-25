@@ -45,17 +45,14 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // ExoPlayer BOM (Bill of Materials) – manages all versions
-    implementation platform('com.google.android.exoplayer:exoplayer-bom:2.19.1')
+    // ExoPlayer core + UI (explicit versions)
+    implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
 
-    // ExoPlayer core modules (versions are taken from the BOM)
-    implementation 'com.google.android.exoplayer:exoplayer-core'
-    implementation 'com.google.android.exoplayer:exoplayer-ui'
-    implementation 'com.google.android.exoplayer:exoplayer-hls'
-    implementation 'com.google.android.exoplayer:exoplayer-dash'
-
-    // FFmpeg extension – now resolved correctly via the BOM
-    implementation 'com.google.android.exoplayer:exoplayer-ext-ffmpeg'
+    // FFmpeg extension (explicit version)
+    implementation 'com.google.android.exoplayer:exoplayer-ext-ffmpeg:2.19.1'
 
     // Media session & preferences
     implementation 'androidx.media:media:1.6.0'
