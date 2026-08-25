@@ -13,8 +13,6 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
-
-        // Keep APK size manageable – only arm64 for 8K devices
         ndk {
             abiFilters 'arm64-v8a'
         }
@@ -42,7 +40,6 @@ android {
 }
 
 dependencies {
-    // AndroidX
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
@@ -54,18 +51,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
 
-    // --- OFFICIAL SOFTWARE EXTENSIONS ---
-    // AV1, VP9, FLAC, Opus, MIDI, IAMF, MPEG-H
-    implementation 'com.google.android.exoplayer:exoplayer-ext-av1:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-vp9:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-flac:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-opus:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-midi:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-iamf:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-ext-mpegh:2.19.1'
-
-    // --- STANDARD FFMPEG (Vorbis, Opus, FLAC) ---
-    // This builds immediately on GitHub Actions – no custom AAR needed.
+    // Standard FFmpeg extension (covers Vorbis, Opus, FLAC)
     implementation 'com.google.android.exoplayer:exoplayer-ext-ffmpeg:2.19.1'
 
     // Media session & preferences
