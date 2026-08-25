@@ -22,13 +22,12 @@ import androidx.core.view.GestureDetectorCompat
 import androidx.preference.PreferenceManager
 import com.google.android.exoplayer2.*
 import com.google.android.exoplayer2.audio.AudioAttributes
-import com.google.android.exoplayer2.ext.ffmpeg.FfmpegAudioRenderer
-import com.google.android.exoplayer2.ext.ffmpeg.FfmpegVideoRenderer
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector
 import com.google.android.exoplayer2.ui.PlayerView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var playerView: PlayerView
     private lateinit var gestureOverlay: View
     private lateinit var topBar: LinearLayout
@@ -52,7 +51,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var player: ExoPlayer
     private var isLocked = false
     private var currentSpeed = 1.0f
-    private var currentDecodingMode = 2
+    private var currentDecodingMode = 2  // 0=HW, 1=SW (unused without extensions), 2=Hybrid
     private val modeLabels = arrayOf("HW", "SW", "HW+SW")
 
     private lateinit var gestureDetector: GestureDetectorCompat
@@ -88,7 +87,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         initViews()
         initPrefs()
-        initPlayer(currentDecodingMode)
+        initPlayer()
         initGestures()
         intent?.data?.let { uri ->
             if (hasStoragePermission()) playVideo(uri) else { pendingVideoUri = uri; requestStoragePermission() }
@@ -132,7 +131,7 @@ class MainActivity : AppCompatActivity() {
         btnDecodingMode.setOnClickListener {
             currentDecodingMode = (currentDecodingMode + 1) % 3
             toast("Decoding: ${modeLabels[currentDecodingMode]}")
-            recreatePlayer(currentDecodingMode)
+            // With only hardware decoding, mode change is just informational
         }
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -144,67 +143,67 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun initPlayer(mode: Int) {
-        val renderersFactory = when (mode) {
-            0 -> DefaultRenderersFactory(this).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            1 -> RenderersFactory { handler, videoListener, audioListener, textListener, _ ->
-                mutableListOf<Renderer>().apply {
-                    try { add(FfmpegVideoRenderer(handler, videoListener, true)) } catch (e: Exception) {}
-                    try { add(FfmpegAudioRenderer(handler, audioListener)) } catch (e: Exception) {}
-                    try { add(Class.forName("com.google.android.exoplayer2.ext.av1.Av1Renderer")
-                        .getConstructor(Handler::class.java, Boolean::class.java)
-                        .newInstance(handler, true) as Renderer) } catch (e: Exception) {}
-                    try { add(Class.forName("com.google.android.exoplayer2.ext.vp9.Vp9Renderer")
-                        .getConstructor(Handler::class.java, Boolean::class.java)
-                        .newInstance(handler, true) as Renderer) } catch (e: Exception) {}
-                    add(TextRenderer(handler, textListener))
-                }.toTypedArray()
-            }
-            else -> DefaultRenderersFactory(this).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        }
+    private fun initPlayer() {
+        // Use default renderers – hardware decoding only (no FFmpeg extensions)
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+
         val trackSelector = DefaultTrackSelector(this).apply {
-            setParameters(parameters.buildUpon().setMaxVideoSize(7680, 4320).setMaxVideoBitrate(100_000_000).build())
+            setParameters(
+                parameters.buildUpon()
+                    .setMaxVideoSize(7680, 4320)
+                    .setMaxVideoBitrate(100_000_000)
+                    .build()
+            )
         }
+
         player = ExoPlayer.Builder(this)
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
-            .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(50000, 120000, 2500, 5000).build())
-            .setAudioAttributes(AudioAttributes.Builder().setContentType(C.CONTENT_TYPE_MOVIE).setUsage(C.USAGE_MEDIA).build(), true)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(50000, 120000, 2500, 5000)
+                    .build()
+            )
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setContentType(C.CONTENT_TYPE_MOVIE)
+                    .setUsage(C.USAGE_MEDIA)
+                    .build(),
+                true
+            )
             .build()
+
         playerView.player = player
+
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) { updateSeekBarAndTime(); updatePlayPauseIcon(); audioSessionId = player.audioSessionId; initEqualizer() }
-                if (state == Player.STATE_ENDED) prefs.edit().remove("resume_position").apply()
+                if (state == Player.STATE_READY) {
+                    updateSeekBarAndTime()
+                    updatePlayPauseIcon()
+                    audioSessionId = player.audioSessionId
+                    initEqualizer()
+                }
+                if (state == Player.STATE_ENDED) {
+                    prefs.edit().remove("resume_position").apply()
+                }
             }
             override fun onPlayerError(error: PlaybackException) {
                 toast("Error: ${error.message}")
-                if (mode == 0) toast("Try HW+SW or SW mode")
             }
         })
+
         Handler(Looper.getMainLooper()).post(object : Runnable {
-            override fun run() { if (player.playbackState == Player.STATE_READY) updateSeekBarAndTime(); Handler(Looper.getMainLooper()).postDelayed(this, 500) }
+            override fun run() {
+                if (player.playbackState == Player.STATE_READY) updateSeekBarAndTime()
+                Handler(Looper.getMainLooper()).postDelayed(this, 500)
+            }
         })
+
         currentVideoUri?.let { uri ->
             player.setMediaItem(MediaItem.fromUri(Uri.parse(uri)))
             player.prepare()
             player.playWhenReady = true
-        }
-    }
-
-    private fun recreatePlayer(mode: Int) {
-        if (::player.isInitialized) {
-            val pos = player.currentPosition
-            val wasPlaying = player.isPlaying
-            val uri = currentVideoUri
-            player.release()
-            initPlayer(mode)
-            uri?.let {
-                player.setMediaItem(MediaItem.fromUri(Uri.parse(it)))
-                player.prepare()
-                player.seekTo(pos)
-                if (wasPlaying) player.play()
-            }
         }
     }
 
@@ -217,47 +216,104 @@ class MainActivity : AppCompatActivity() {
         updatePlayPauseIcon()
         prefs.edit().putString("last_video", uri.toString()).apply()
     }
-    private fun togglePlayPause() { if (player.isPlaying) player.pause() else player.play(); updatePlayPauseIcon() }
-    private fun updatePlayPauseIcon() { btnPlayPause.setImageResource(if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play) }
+
+    private fun togglePlayPause() {
+        if (player.isPlaying) player.pause() else player.play()
+        updatePlayPauseIcon()
+    }
+
+    private fun updatePlayPauseIcon() {
+        btnPlayPause.setImageResource(if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+    }
+
     private fun updateSeekBarAndTime() {
         val d = player.duration
         val p = player.currentPosition
-        if (d > 0) { seekBar.progress = (p * 1000 / d).toInt(); timeCurrent.text = formatTime(p); timeTotal.text = "/ ${formatTime(d)}" }
+        if (d > 0) {
+            seekBar.progress = (p * 1000 / d).toInt()
+            timeCurrent.text = formatTime(p)
+            timeTotal.text = "/ ${formatTime(d)}"
+        }
     }
-    private fun formatTime(ms: Long): String { val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60; return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec) }
-    private fun toggleControls() { topBar.visibility = if (topBar.visibility == View.VISIBLE) View.GONE else View.VISIBLE; bottomBar.visibility = if (bottomBar.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+
+    private fun formatTime(ms: Long): String {
+        val s = ms / 1000
+        val h = s / 3600
+        val m = (s % 3600) / 60
+        val sec = s % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
+    }
+
+    private fun toggleControls() {
+        topBar.visibility = if (topBar.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        bottomBar.visibility = if (bottomBar.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+    }
+
     private fun toggleLock() {
         isLocked = !isLocked
         lockOverlay.visibility = if (isLocked) View.VISIBLE else View.GONE
         btnLock.setImageResource(if (isLocked) android.R.drawable.ic_lock_lock else android.R.drawable.ic_lock_idle_lock)
         gestureOverlay.isEnabled = !isLocked
-        if (isLocked) { topBar.visibility = View.GONE; bottomBar.visibility = View.GONE }
-        else { topBar.visibility = View.VISIBLE; bottomBar.visibility = View.VISIBLE }
+        if (isLocked) {
+            topBar.visibility = View.GONE
+            bottomBar.visibility = View.GONE
+        } else {
+            topBar.visibility = View.VISIBLE
+            bottomBar.visibility = View.VISIBLE
+        }
     }
+
     private fun showSpeedDialog() {
         val speeds = arrayOf("0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x")
         val values = floatArrayOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
         val checked = values.indexOf(currentSpeed).coerceAtLeast(0)
-        AlertDialog.Builder(this).setTitle("Speed").setSingleChoiceItems(speeds, checked) { dialog, which ->
-            currentSpeed = values[which]; player.setPlaybackSpeed(currentSpeed); dialog.dismiss(); toast("Speed: ${speeds[which]}")
-        }.show()
+        AlertDialog.Builder(this)
+            .setTitle("Speed")
+            .setSingleChoiceItems(speeds, checked) { dialog, which ->
+                currentSpeed = values[which]
+                player.setPlaybackSpeed(currentSpeed)
+                dialog.dismiss()
+                toast("Speed: ${speeds[which]}")
+            }
+            .show()
     }
-    private fun setSubtitle(uri: Uri) { toast("Subtitle loaded: $uri") }
-    private fun initEqualizer() { if (audioSessionId != 0) { try { equalizer = Equalizer(0, audioSessionId); equalizer?.enabled = true } catch (e: Exception) {} } }
+
+    private fun setSubtitle(uri: Uri) {
+        toast("Subtitle loaded: $uri")
+        // Actual implementation would parse and set subtitle track – simplified for now
+    }
+
+    private fun initEqualizer() {
+        if (audioSessionId != 0) {
+            try {
+                equalizer = Equalizer(0, audioSessionId)
+                equalizer?.enabled = true
+            } catch (e: Exception) { /* no EQ */ }
+        }
+    }
+
     private fun showEqualizerDialog() {
         val dialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.dialog_equalizer, null)
         dialog.setContentView(view)
         val bands = equalizer?.numberOfBands ?: 0
         if (bands > 0) {
-            val seekBars = listOf(view.findViewById<SeekBar>(R.id.eq_band0), view.findViewById<SeekBar>(R.id.eq_band1), view.findViewById<SeekBar>(R.id.eq_band2), view.findViewById<SeekBar>(R.id.eq_band3), view.findViewById<SeekBar>(R.id.eq_band4))
+            val seekBars = listOf(
+                view.findViewById<SeekBar>(R.id.eq_band0),
+                view.findViewById<SeekBar>(R.id.eq_band1),
+                view.findViewById<SeekBar>(R.id.eq_band2),
+                view.findViewById<SeekBar>(R.id.eq_band3),
+                view.findViewById<SeekBar>(R.id.eq_band4)
+            )
             val min = equalizer?.bandLevelRange?.get(0) ?: -1000
             val max = equalizer?.bandLevelRange?.get(1) ?: 1000
             for (i in 0 until bands.coerceAtMost(5)) {
                 seekBars[i].max = max - min
                 seekBars[i].progress = (equalizer?.getBandLevel(i.toShort()) ?: 0) - min
                 seekBars[i].setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) { if (fromUser) equalizer?.setBandLevel(i.toShort(), (progress + min).toShort()) }
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (fromUser) equalizer?.setBandLevel(i.toShort(), (progress + min).toShort())
+                    }
                     override fun onStartTrackingTouch(sb: SeekBar?) {}
                     override fun onStopTrackingTouch(sb: SeekBar?) {}
                 })
@@ -265,24 +321,59 @@ class MainActivity : AppCompatActivity() {
         }
         dialog.show()
     }
-    private fun enterPipMode() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) } else toast("PIP requires Android 8+") }
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) { super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig); topBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE; bottomBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE }
+
+    private fun enterPipMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+            )
+        } else {
+            toast("PIP requires Android 8+")
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        topBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
+        bottomBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun initGestures() {
         gestureDetector = GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (e.x < gestureOverlay.width / 2) { player.seekTo(player.currentPosition - 10000); toast("⏪ -10s") }
-                else { player.seekTo(player.currentPosition + 10000); toast("⏩ +10s") }
+                if (e.x < gestureOverlay.width / 2) {
+                    player.seekTo(player.currentPosition - 10000)
+                    toast("⏪ -10s")
+                } else {
+                    player.seekTo(player.currentPosition + 10000)
+                    toast("⏩ +10s")
+                }
                 return true
             }
-            override fun onLongPress(e: MotionEvent) { peekText.text = "👆 ${formatTime(player.currentPosition)}"; peekText.visibility = View.VISIBLE; peekHandler.removeCallbacksAndMessages(null); peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1500) }
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { if (!isLocked) toggleControls(); return true }
+            override fun onLongPress(e: MotionEvent) {
+                peekText.text = "👆 ${formatTime(player.currentPosition)}"
+                peekText.visibility = View.VISIBLE
+                peekHandler.removeCallbacksAndMessages(null)
+                peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1500)
+            }
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (!isLocked) toggleControls()
+                return true
+            }
         })
+
         gestureOverlay.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> { gestureStartX = event.x; gestureStartY = event.y; gestureStartVolume = getCurrentVolume(); gestureStartBrightness = getCurrentBrightness() }
+                MotionEvent.ACTION_DOWN -> {
+                    gestureStartX = event.x
+                    gestureStartY = event.y
+                    gestureStartVolume = getCurrentVolume()
+                    gestureStartBrightness = getCurrentBrightness()
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - gestureStartX
                     val dy = event.y - gestureStartY
@@ -290,13 +381,30 @@ class MainActivity : AppCompatActivity() {
                         when {
                             Math.abs(dx) > Math.abs(dy) -> {
                                 val d = player.duration
-                                if (d > 0) { val delta = (dx / gestureOverlay.width * d).toLong(); player.seekTo((player.currentPosition + delta).coerceIn(0, d)); peekText.text = formatTime(player.currentPosition); peekText.visibility = View.VISIBLE; peekHandler.removeCallbacksAndMessages(null); peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000) }
+                                if (d > 0) {
+                                    val delta = (dx / gestureOverlay.width * d).toLong()
+                                    player.seekTo((player.currentPosition + delta).coerceIn(0, d))
+                                    peekText.text = formatTime(player.currentPosition)
+                                    peekText.visibility = View.VISIBLE
+                                    peekHandler.removeCallbacksAndMessages(null)
+                                    peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000)
+                                }
                             }
                             event.x < gestureOverlay.width / 2 -> {
-                                val brightness = (gestureStartBrightness - dy / gestureOverlay.height).coerceIn(0f, 1f); setBrightness(brightness); peekText.text = "☀️ ${(brightness * 100).toInt()}%"; peekText.visibility = View.VISIBLE; peekHandler.removeCallbacksAndMessages(null); peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000)
+                                val brightness = (gestureStartBrightness - dy / gestureOverlay.height).coerceIn(0f, 1f)
+                                setBrightness(brightness)
+                                peekText.text = "☀️ ${(brightness * 100).toInt()}%"
+                                peekText.visibility = View.VISIBLE
+                                peekHandler.removeCallbacksAndMessages(null)
+                                peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000)
                             }
                             else -> {
-                                val volume = (gestureStartVolume - dy / gestureOverlay.height).coerceIn(0f, 1f); setVolume(volume); peekText.text = "🔊 ${(volume * 100).toInt()}%"; peekText.visibility = View.VISIBLE; peekHandler.removeCallbacksAndMessages(null); peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000)
+                                val volume = (gestureStartVolume - dy / gestureOverlay.height).coerceIn(0f, 1f)
+                                setVolume(volume)
+                                peekText.text = "🔊 ${(volume * 100).toInt()}%"
+                                peekText.visibility = View.VISIBLE
+                                peekHandler.removeCallbacksAndMessages(null)
+                                peekHandler.postDelayed({ peekText.visibility = View.GONE }, 1000)
                             }
                         }
                     }
@@ -305,23 +413,98 @@ class MainActivity : AppCompatActivity() {
             true
         }
     }
-    private fun getCurrentVolume(): Float { val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager; return am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) }
-    private fun setVolume(level: Float) { val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager; am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (level * am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)).toInt(), 0) }
-    private fun getCurrentBrightness(): Float { return try { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f } catch (e: Exception) { 0.5f } }
-    private fun setBrightness(level: Float) { val lp = window.attributes; lp.screenBrightness = level.coerceIn(0.01f, 1f); window.attributes = lp }
-    private fun showOpenDialog() {
-        AlertDialog.Builder(this).setTitle("Open Video").setItems(arrayOf("Open from Gallery", "Open URL (Network)")) { _, which ->
-            when (which) {
-                0 -> if (hasStoragePermission()) filePickerLauncher.launch("video/*") else requestStoragePermission()
-                1 -> showUrlInputDialog()
-            }
-        }.show()
+
+    private fun getCurrentVolume(): Float {
+        val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        return am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() /
+                am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
     }
-    private fun showUrlInputDialog() { val input = EditText(this); input.hint = "Enter video URL"; AlertDialog.Builder(this).setTitle("Network Stream").setView(input).setPositiveButton("Play") { _, _ -> val url = input.text.toString().trim(); if (url.isNotEmpty()) playVideo(Uri.parse(url)) }.setNegativeButton("Cancel", null).show() }
-    private fun hasStoragePermission(): Boolean { return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED else ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED }
-    private fun requestStoragePermission() { requestPermissionLauncher.launch(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) android.Manifest.permission.READ_MEDIA_VIDEO else android.Manifest.permission.READ_EXTERNAL_STORAGE) }
-    private fun initPrefs() { prefs = PreferenceManager.getDefaultSharedPreferences(this); val pos = prefs.getLong("resume_position", 0); if (pos > 0 && ::player.isInitialized) player.seekTo(pos) }
-    override fun onPause() { super.onPause(); if (::player.isInitialized && player.playbackState == Player.STATE_READY) prefs.edit().putLong("resume_position", player.currentPosition).apply() }
-    override fun onDestroy() { super.onDestroy(); if (::player.isInitialized) player.release(); equalizer?.release() }
-    private fun toast(msg: String) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
+
+    private fun setVolume(level: Float) {
+        val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        am.setStreamVolume(
+            android.media.AudioManager.STREAM_MUSIC,
+            (level * am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)).toInt(),
+            0
+        )
+    }
+
+    private fun getCurrentBrightness(): Float {
+        return try {
+            Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
+        } catch (e: Exception) { 0.5f }
+    }
+
+    private fun setBrightness(level: Float) {
+        val lp = window.attributes
+        lp.screenBrightness = level.coerceIn(0.01f, 1f)
+        window.attributes = lp
+    }
+
+    private fun showOpenDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Open Video")
+            .setItems(arrayOf("Open from Gallery", "Open URL (Network)")) { _, which ->
+                when (which) {
+                    0 -> if (hasStoragePermission()) filePickerLauncher.launch("video/*") else requestStoragePermission()
+                    1 -> showUrlInputDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun showUrlInputDialog() {
+        val input = EditText(this)
+        input.hint = "Enter video URL"
+        AlertDialog.Builder(this)
+            .setTitle("Network Stream")
+            .setView(input)
+            .setPositiveButton("Play") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isNotEmpty()) playVideo(Uri.parse(url))
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun hasStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun requestStoragePermission() {
+        requestPermissionLauncher.launch(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                android.Manifest.permission.READ_MEDIA_VIDEO
+            } else {
+                android.Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+        )
+    }
+
+    private fun initPrefs() {
+        prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val pos = prefs.getLong("resume_position", 0)
+        if (pos > 0 && ::player.isInitialized) player.seekTo(pos)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::player.isInitialized && player.playbackState == Player.STATE_READY) {
+            prefs.edit().putLong("resume_position", player.currentPosition).apply()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::player.isInitialized) player.release()
+        equalizer?.release()
+    }
+
+    private fun toast(msg: String) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    }
 }
