@@ -145,7 +145,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initPlayer() {
-        // Use default renderers – hardware decoding only (no FFmpeg extensions)
+        // Use default renderers – hardware decoding only
         val renderersFactory = DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
@@ -267,7 +267,8 @@ class MainActivity : AppCompatActivity() {
     private fun showSpeedDialog() {
         val speeds = arrayOf("0.25x", "0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x", "3.0x")
         val values = floatArrayOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
-        val checked = values.indexOf(currentSpeed).coerceAtLeast(0)
+        // Convert to List to use indexOf
+        val checked = values.toList().indexOf(currentSpeed).coerceAtLeast(0)
         AlertDialog.Builder(this)
             .setTitle("Speed")
             .setSingleChoiceItems(speeds, checked) { dialog, which ->
