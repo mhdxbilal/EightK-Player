@@ -10,9 +10,6 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+
+// All repositories are now managed in settings.gradle
+// No need for allprojects block
