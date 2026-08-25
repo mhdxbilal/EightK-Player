@@ -1,0 +1,5 @@
+-keep class com.google.android.exoplayer2.** { *; }
+-keep interface com.google.android.exoplayer2.** { *; }
+-keep class com.google.android.exoplayer2.ext.ffmpeg.** { *; }
+-keep interface com.google.android.exoplayer2.ext.ffmpeg.** { *; }
+-keep class com.google.android.exoplayer2.ext.** { *; }
