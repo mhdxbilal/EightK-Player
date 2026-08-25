@@ -45,14 +45,13 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // ExoPlayer core + UI (explicit versions)
+    // ExoPlayer core + UI (no FFmpeg extension)
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
 
-    // FFmpeg extension (explicit version)
-    implementation 'com.google.android.exoplayer:exoplayer-ext-ffmpeg:2.19.1'
+    // No FFmpeg extension for now – will add custom AAR later
 
     // Media session & preferences
     implementation 'androidx.media:media:1.6.0'
