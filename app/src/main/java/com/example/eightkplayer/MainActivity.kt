@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.PictureInPictureParams
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Build
@@ -51,7 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var player: ExoPlayer
     private var isLocked = false
     private var currentSpeed = 1.0f
-    private var currentDecodingMode = 2  // 0=HW, 1=SW (unused without extensions), 2=Hybrid
+    private var currentDecodingMode = 2  // 0=HW, 1=SW (unused), 2=Hybrid
     private val modeLabels = arrayOf("HW", "SW", "HW+SW")
 
     private lateinit var gestureDetector: GestureDetectorCompat
@@ -280,7 +281,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setSubtitle(uri: Uri) {
         toast("Subtitle loaded: $uri")
-        // Actual implementation would parse and set subtitle track – simplified for now
+        // Implementation would parse and set subtitle track
     }
 
     private fun initEqualizer() {
@@ -334,7 +335,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) {
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         topBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
         bottomBar.visibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
