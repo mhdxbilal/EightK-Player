@@ -1,2 +1,0 @@
-# EightK-Player
-Media Player
